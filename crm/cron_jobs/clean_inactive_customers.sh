@@ -1,50 +1,22 @@
-cat > crm/cron_jobs/clean_inactive_customers.sh << 'EOF'
 #!/bin/bash
 
-# Get the script directory using BASH_SOURCE
-SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
+cwd="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -d "$cwd/../.." ]; then
+  cd "$cwd/../.."
+else
+  echo "Could not determine project root directory." >&2
+  exit 1
+fi
 
-# Navigate to the Django project directory (two levels up from cron_jobs)
-cd "$SCRIPT_DIR/../.."
+source venv/bin/activate
 
-# Verify we're in the correct directory
-pwd
-
-# Change working directory to project root
-cwd=$(pwd)
-
-# Get the current timestamp
-timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-
-# Execute Django shell command to delete inactive customers
-deleted_count=$(python manage.py shell << 'PYTHON_EOF'
-import django
-from django.utils import timezone
+python manage.py shell << END
 from datetime import timedelta
+from django.utils import timezone
 from crm.models import Customer
-
-# Calculate the date one year ago
-one_year_ago = timezone.now() - timedelta(days=365)
-
-# Find customers with no orders in the last year
-inactive_customers = Customer.objects.filter(
-    orders__isnull=True
-) | Customer.objects.exclude(
-    orders__order_date__gte=one_year_ago
-).distinct()
-
-# Count and delete inactive customers
-count = inactive_customers.count()
-if count > 0:
-    inactive_customers.delete()
-    print(f"Deleted {count} inactive customers")
-else:
-    print("No inactive customers found")
-    
-print(count)
-PYTHON_EOF
-)
-
-# Log the result with timestamp
-echo "[$timestamp] Deleted $deleted_count inactive customers" >> /tmp/customer_cleanup_log.txt
-EOF
+cutoff = timezone.now() - timedelta(days=365)
+deleted, _ = Customer.objects.filter(orders__isnull=True, created_at__lt=cutoff).delete()
+with open("/tmp/customer_cleanup_log.txt", "a") as f:
+    from datetime import datetime
+    f.write(f"{datetime.now()} - Deleted {deleted} customers\n")
+END

@@ -1,37 +1,38 @@
-import requests
-from datetime import datetime, timedelta
 from gql import gql, Client
 from gql.transport.requests import RequestsHTTPTransport
+from datetime import datetime, timedelta
 
-# Define the GraphQL query
-query = gql("""
-query ($startDate: String!, $endDate: String!) {
-  orders(orderDate_Gte: $startDate, orderDate_Lte: $endDate) {
-    id
-    customer {
-      email
-    }
-  }
-}
-""")
+# Define transport
+transport = RequestsHTTPTransport(
+    url="http://localhost:8000/graphql",
+    verify=False,
+    retries=3,
+)
 
-# Calculate the date range for the last 7 days
-end_date = datetime.now().strftime('%Y-%m-%d')
-start_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
-
-# Set up the GraphQL client
-transport = RequestsHTTPTransport(url='http://localhost:8000/graphql')
 client = Client(transport=transport, fetch_schema_from_transport=True)
 
-# Execute the query
-params = {"startDate": start_date, "endDate": end_date}
-response = client.execute(query, variable_values=params)
+# Create the query
+one_week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+query = gql(f"""
+{{
+  orders(orderDate_Gte: "{one_week_ago}") {{
+    id
+    customer {{
+      email
+    }}
+  }}
+}}
+""")
 
-# Log the orders
-with open('/tmp/order_reminders_log.txt', 'a') as log_file:
-    for order in response.get('orders', []):
-        order_id = order['id']
-        customer_email = order['customer']['email']
-        log_file.write(f"{datetime.now()} - Order ID: {order_id}, Customer Email: {customer_email}\n")
+# Execute and log results
+try:
+    result = client.execute(query)
+    orders = result.get("orders", [])
 
-print("Order reminders processed!")
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with open("/tmp/order_reminders_log.txt", "a") as log:
+        for order in orders:
+            log.write(f"{now} - Order ID: {order['id']}, Email: {order['customer']['email']}\n")
+    print("Order reminders processed!")
+except Exception as e:
+    print("Error:", e)

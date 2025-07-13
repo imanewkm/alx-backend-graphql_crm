@@ -1,41 +1,32 @@
-# CRM Celery Setup
+# CRM Celery Setup Guide
 
-## Steps to Set Up Celery and Celery Beat
+This guide explains how to set up and run Celery with Redis for the CRM application's background tasks and scheduled reports.
 
-1. **Install Redis**:
-   - Install Redis on your system. For example, on Ubuntu:
-     ```bash
-     sudo apt update
-     sudo apt install redis
-     ```
-   - Start the Redis server:
-     ```bash
-     sudo service redis start
-     ```
+## Prerequisites
 
-2. **Install Dependencies**:
-   - Install the required Python packages:
-     ```bash
-     pip install -r requirements.txt
-     ```
+- Python 3.8+
+- Django 4.2+
+- Redis server
 
-3. **Run Migrations**:
-   - Apply migrations for `django-celery-beat`:
-     ```bash
-     python manage.py migrate
-     ```
+## Installation Steps
 
-4. **Start Celery Worker**:
-   - Start the Celery worker:
-     ```bash
-     celery -A crm worker -l info
-     ```
+### 1. Install Redis
 
-5. **Start Celery Beat**:
-   - Start the Celery Beat scheduler:
-     ```bash
-     celery -A crm beat -l info
-     ```
+**Ubuntu/Debian:**
+```bash
+sudo apt update
+sudo apt install redis-server
+sudo systemctl start redis-server
+sudo systemctl enable redis-server
+```
 
-6. **Verify Logs**:
-   - Check the generated report logs in `/tmp/crm_report_log.txt`.
+**macOS (using Homebrew):**
+```bash
+brew install redis
+brew services start redis
+```
+
+**Windows:**
+Download and install Redis from the official website or use WSL.
+
+### 2. Verify Redis Installation

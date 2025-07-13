@@ -1,55 +1,141 @@
+"""
+Django-crontab job definitions for CRM application
+"""
+import os
+import django
 from datetime import datetime
-from crm.models import Product
+
+# Setup Django environment
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'graphql_crm.settings')
+django.setup()
+
 
 def log_crm_heartbeat():
-    # Log the heartbeat message
-    with open('/tmp/crm_heartbeat_log.txt', 'a') as log_file:
-        log_file.write(f"{datetime.now().strftime('%d/%m/%Y-%H:%M:%S')} CRM is alive\n")
-
-    # Optionally query the GraphQL hello field
+    """
+    Log a heartbeat message to confirm CRM application health.
+    Logs in format: DD/MM/YYYY-HH:MM:SS CRM is alive
+    Optionally queries GraphQL hello field to verify endpoint responsiveness.
+    """
+    # Get current timestamp in required format
+    timestamp = datetime.now().strftime('%d/%m/%Y-%H:%M:%S')
+    
+    # Create heartbeat message
+    heartbeat_message = f"{timestamp} CRM is alive"
+    
     try:
-        transport = RequestsHTTPTransport(
-            url='http://localhost:8000/graphql',
-            verify=True,
-            retries=3
-        )
+        # Optional: Test GraphQL endpoint responsiveness
+        from gql import gql, Client
+        from gql.transport.requests import RequestsHTTPTransport
+        
+        # Setup GraphQL client
+        transport = RequestsHTTPTransport(url="http://localhost:8000/graphql")
         client = Client(transport=transport, fetch_schema_from_transport=True)
-        query = gql("query { hello }")
-        response = client.execute(query)
-        print("GraphQL endpoint response:", response)
+        
+        # Query the hello field
+        query = gql("""
+            query {
+                hello
+            }
+        """)
+        
+        result = client.execute(query)
+        hello_response = result.get('hello', 'No response')
+        
+        # Enhanced message with GraphQL response
+        heartbeat_message += f" - GraphQL hello: {hello_response}"
+        
     except Exception as e:
-        print(f"Error querying GraphQL endpoint: {e}")
-
-def update_low_stock():
-    """
-    Update low stock products by incrementing their stock by 10.
-    This function simulates the GraphQL mutation behavior directly.
-    """
+        # If GraphQL query fails, log the error but continue with basic heartbeat
+        heartbeat_message += f" - GraphQL check failed: {str(e)}"
+    
+    # Append heartbeat message to log file
     try:
-        # Query products with stock < 10
-        low_stock_products = Product.objects.filter(stock__lt=10)
-        updated_products = []
-
-        # Increment their stock by 10 (simulating restocking)
-        for product in low_stock_products:
-            product.stock += 10
-            product.save()
-            updated_products.append(f"{product.name} (Stock: {product.stock})")
-
-        # Log updated product names and new stock levels to low_stock_updates_log.txt with a timestamp
-        with open('low_stock_updates_log.txt', 'a') as log_file:
-            log_file.write(f"{datetime.now().strftime('%d/%m/%Y-%H:%M:%S')} - Low stock products updated successfully!\n")
-            for product in updated_products:
-                log_file.write(f"{product}\n")
-
-        print("Low stock products updated successfully!")
-        return {
-            'success': 'Low stock products updated successfully!',
-            'updated_products': updated_products
-        }
+        with open('/tmp/crm_heartbeat_log.txt', 'a') as log_file:
+            log_file.write(heartbeat_message + '\n')
     except Exception as e:
-        print(f"Error updating low stock products: {e}")
-        return {
-            'success': f'Error: {str(e)}',
-            'updated_products': []
-        }
+        # Fallback logging if file write fails
+        print(f"Failed to write heartbeat log: {e}")
+        print(heartbeat_message)
+
+
+def updatelowstock():
+    """
+    Execute UpdateLowStockProducts mutation via GraphQL endpoint.
+    Logs updated product names and new stock levels with timestamp.
+    """
+    # Get current timestamp
+    timestamp = datetime.now().strftime('%d/%m/%Y-%H:%M:%S')
+    
+    try:
+        # Import GraphQL client
+        from gql import gql, Client
+        from gql.transport.requests import RequestsHTTPTransport
+        
+        # Setup GraphQL client
+        transport = RequestsHTTPTransport(url="http://localhost:8000/graphql")
+        client = Client(transport=transport, fetch_schema_from_transport=True)
+        
+        # First, query products with stock < 10
+        query = gql("""
+            query {
+                lowStockProducts {
+                    id
+                    name
+                    stock
+                }
+            }
+        """)
+        
+        query_result = client.execute(query)
+        low_stock_products = query_result.get('lowStockProducts', [])
+        
+        # Execute UpdateLowStockProducts mutation to increment stock by 10
+        mutation = gql("""
+            mutation {
+                updateLowStockProducts {
+                    success
+                    message
+                    count
+                    updatedProducts {
+                        id
+                        name
+                        stock
+                    }
+                }
+            }
+        """)
+        
+        result = client.execute(mutation)
+        mutation_result = result.get('updateLowStockProducts', {})
+        
+        # Log the results
+        log_entries = []
+        log_entries.append(f"[{timestamp}] Low stock update executed")
+        log_entries.append(f"Success: {mutation_result.get('success', False)}")
+        log_entries.append(f"Message: {mutation_result.get('message', 'No message')}")
+        log_entries.append(f"Products updated: {mutation_result.get('count', 0)}")
+        
+        # Log individual product updates
+        updated_products = mutation_result.get('updatedProducts', [])
+        if updated_products:
+            log_entries.append("Updated products:")
+            for product in updated_products:
+                log_entries.append(f"  - {product['name']}: New stock level = {product['stock']}")
+        else:
+            log_entries.append("No products were updated")
+        
+        # Write to log file
+        with open('/tmp/lowstockupdates_log.txt', 'a') as log_file:
+            for entry in log_entries:
+                log_file.write(entry + '\n')
+            log_file.write('\n')  # Add blank line for readability
+            
+    except Exception as e:
+        # Log errors
+        error_message = f"[{timestamp}] ERROR in update_low_stock: {str(e)}"
+        try:
+            with open('/tmp/lowstockupdates_log.txt', 'a') as log_file:
+                log_file.write(error_message + '\n\n')
+        except Exception as log_error:
+            print(f"Failed to write error log: {log_error}")
+            print(error_message)

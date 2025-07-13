@@ -35,6 +35,7 @@ def update_low_stock():
     with open('/tmp/low_stock_updates_log.txt', 'a') as f:
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         updates = response.get('updateLowStockProducts', {})
+        f.write(f"{timestamp} - {updates.get('message', '')}\n")
         for name in updates.get('updated', []):
             f.write(f"{timestamp} - Updated stock for: {name}\n")
 
